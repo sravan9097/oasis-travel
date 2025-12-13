@@ -38,9 +38,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="support"
         options={{
-          title: 'Support',
+          title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="help-circle-outline" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />

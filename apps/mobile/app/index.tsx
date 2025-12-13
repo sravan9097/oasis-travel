@@ -1,48 +1,60 @@
-import { View, Text, StyleSheet } from 'react-native';
-import { Button } from 'react-native-paper';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { useSessionStore } from './store/session';
 
+// FOR TESTING: Automatically enter as guest
+// This bypasses all authentication for rapid testing
 export default function Welcome() {
   const setGuestSessionId = useSessionStore((s) => s.setGuestSessionId);
   const session = useSessionStore((s) => s.session);
   const guestSessionId = useSessionStore((s) => s.guestSessionId);
   const router = useRouter();
 
-  // Redirect if already logged in
+  // Auto-enter as guest for testing
   useEffect(() => {
+    async function autoEnterAsGuest() {
+      console.log('🧪 Testing mode: Auto-entering as guest...');
+      
+      // If already logged in or has guest session, redirect immediately
     if (session || guestSessionId) {
+        console.log('✅ Session exists, redirecting to app');
       router.replace('/(tabs)');
+        return;
     }
-  }, [session, guestSessionId, router]);
 
-  const enterAsGuest = async () => {
-    const guestId = `guest-${Date.now()}`;
+      try {
+        // Create a persistent guest session for testing
+        const guestId = `test-guest-${Date.now()}`;
     await SecureStore.setItemAsync('guest_session_id', guestId);
     setGuestSessionId(guestId);
+        console.log('✅ Guest session created:', guestId);
+        
+        // Navigate to app
+        router.replace('/(tabs)');
+      } catch (err: any) {
+        console.error('❌ Error creating guest session:', err);
+        // Even if SecureStore fails, just set the session in memory
+        const guestId = `test-guest-${Date.now()}`;
+        setGuestSessionId(guestId);
+        console.log('✅ Guest session created in memory:', guestId);
     router.replace('/(tabs)');
-  };
+      }
+    }
 
-  const signIn = () => {
-    router.push('/(auth)/otp');
-  };
+    // Execute immediately - no need to wait
+    autoEnterAsGuest();
+  }, [session, guestSessionId, router, setGuestSessionId]);
 
+  // Show simple loading screen
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to Oasis Travel</Text>
       <Text style={styles.subtitle}>
-        Plan your perfect trip with our expert help
+        Loading...
       </Text>
-      
-      <Button mode="contained" onPress={signIn} style={styles.button}>
-        Sign In with Phone
-      </Button>
-      
-      <Button mode="outlined" onPress={enterAsGuest} style={styles.button}>
-        Browse as Guest
-      </Button>
+      <ActivityIndicator size="large" style={styles.loader} color="#0066CC" />
     </View>
   );
 }
@@ -64,6 +76,15 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 40,
     textAlign: 'center',
+  },
+  loader: {
+    marginTop: 20,
+  },
+  error: {
+    marginTop: 20,
+    color: 'red',
+    textAlign: 'center',
+    fontSize: 14,
   },
   button: {
     marginVertical: 8,
