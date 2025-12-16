@@ -1,15 +1,12 @@
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
-import { ScrollView, View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { Button, ActivityIndicator, TextInput, IconButton } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChatBubble } from '../components/ChatBubble';
-import { ChatHeader } from '../components/ChatHeader';
-import { TypingIndicator } from '../components/TypingIndicator';
-import { InteractiveList } from '../components/InteractiveList';
-import { PackageCards } from '../components/PackageCard';
-import { rpcCreateLeadFromGuest, chatWithBot, type ChatMessage as APIChatMessage, type ExtractedTripData } from '@oasis/api';
-import { useSessionStore } from '../store/session';
-import { router } from 'expo-router';
+import { ChatBubble } from '../components/chat/ChatBubble';
+import { ChatHeader } from '../components/chat/ChatHeader';
+import { TypingIndicator } from '../components/chat/TypingIndicator';
+import { InteractiveList } from '../components/chat/InteractiveList';
+import { PackageCards } from '../components/chat/PackageCards';
+import { chatWithBot, type ChatMessage as APIChatMessage, type ExtractedTripData } from '@oasis/api';
 
 interface QuickReplyOption {
   label: string;
@@ -49,18 +46,14 @@ interface ChatMessage {
   status?: 'sent' | 'delivered' | 'read';
 }
 
-export default function BotIntakeScreen() {
+export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [extractedData, setExtractedData] = useState<ExtractedTripData>({});
   const [conversationHistory, setConversationHistory] = useState<APIChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [isOnline, setIsOnline] = useState(true);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const insets = useSafeAreaInsets();
-  
-  const guestSessionId = useSessionStore((s) => s.guestSessionId);
-  const session = useSessionStore((s) => s.session);
+  const scrollViewRef = useRef<HTMLDivElement>(null);
 
   // Initialize chat with welcome message
   useEffect(() => {
@@ -74,7 +67,7 @@ export default function BotIntakeScreen() {
         const response = await chatWithBot([], "Hello, I'd like to plan a trip.", extractedData);
 
         setIsOnline(true);
-        
+
         // Update extracted data
         if (response.extractedData) {
           setExtractedData((prev) => ({ ...prev, ...response.extractedData }));
@@ -104,14 +97,9 @@ export default function BotIntakeScreen() {
         scrollToBottom();
       } catch (error: any) {
         console.error('Error getting initial bot message:', error);
-        console.error('Error details:', {
-          message: error?.message,
-          name: error?.name,
-          stack: error?.stack,
-        });
-        
+
         setIsOnline(false);
-        
+
         // Provide fallback quick options instead of just an error
         const fallbackMessage: ChatMessage = {
           id: `fallback-${Date.now()}`,
@@ -142,9 +130,9 @@ export default function BotIntakeScreen() {
       timestamp: Date.now(),
       status: 'read',
     };
-    
+
     setMessages([welcomeMessage]);
-    
+
     // Get initial AI response after a short delay
     const timeoutId = setTimeout(() => {
       sendInitialBotMessage();
@@ -173,8 +161,8 @@ export default function BotIntakeScreen() {
 
     // Update message status to delivered after a short delay
     setTimeout(() => {
-      setMessages((prev) => 
-        prev.map((msg) => 
+      setMessages((prev) =>
+        prev.map((msg) =>
           msg.id === userMessage.id ? { ...msg, status: 'delivered' as const } : msg
         )
       );
@@ -191,10 +179,10 @@ export default function BotIntakeScreen() {
       const response = await chatWithBot(updatedHistory, userMessageText, extractedData);
 
       setIsOnline(true);
-      
+
       // Update user message status to read
-      setMessages((prev) => 
-        prev.map((msg) => 
+      setMessages((prev) =>
+        prev.map((msg) =>
           msg.id === userMessage.id ? { ...msg, status: 'read' as const } : msg
         )
       );
@@ -238,18 +226,13 @@ export default function BotIntakeScreen() {
       scrollToBottom();
     } catch (error: any) {
       console.error('Error chatting with bot:', error);
-      console.error('Error details:', {
-        message: error?.message,
-        name: error?.name,
-        stack: error?.stack,
-      });
-      
+
       setIsOnline(false);
-      
+
       // Provide helpful fallback based on current data state
       let fallbackMsg = "I'm having trouble processing that. Let me help you with some options:";
       let quickReplies: QuickReplyOption[] = [];
-      
+
       if (!extractedData.destinations || extractedData.destinations.length === 0) {
         fallbackMsg = "Let's try again! Which destination would you like to visit?";
         quickReplies = [
@@ -274,14 +257,8 @@ export default function BotIntakeScreen() {
           { label: '3 adults', value: '3' },
           { label: '4+ adults', value: '4' },
         ];
-      } else {
-        fallbackMsg = "Would you like to proceed with getting a quote?";
-        quickReplies = [
-          { label: '✅ Get Quote', value: 'get_quote' },
-          { label: '✏️ Change Details', value: 'change' },
-        ];
       }
-      
+
       const fallbackMessage: ChatMessage = {
         id: `fallback-${Date.now()}`,
         message: fallbackMsg,
@@ -314,143 +291,28 @@ export default function BotIntakeScreen() {
 
   const scrollToBottom = () => {
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      scrollViewRef.current?.scrollTo({
+        top: scrollViewRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
     }, 100);
   };
 
-  const submitLead = async () => {
-    if (!guestSessionId && !session) {
-      return;
-    }
-
-    // Validate minimum required fields
-    if (!extractedData.destinations || extractedData.destinations.length === 0) {
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        message: 'Please provide at least one destination.',
-        isUser: false,
-        messageType: 'text',
-        timestamp: Date.now(),
-        status: 'read',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      scrollToBottom();
-      return;
-    }
-
-    if (!extractedData.nights || extractedData.nights <= 0) {
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        message: 'Please provide the number of nights.',
-        isUser: false,
-        messageType: 'text',
-        timestamp: Date.now(),
-        status: 'read',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      scrollToBottom();
-      return;
-    }
-
-    if (!extractedData.pax_adults || extractedData.pax_adults <= 0) {
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        message: 'Please provide the number of adults.',
-        isUser: false,
-        messageType: 'text',
-        timestamp: Date.now(),
-        status: 'read',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      scrollToBottom();
-      return;
-    }
-
-    setLoading(true);
-    
-    // Add loading message
-    const loadingMessage: ChatMessage = {
-      id: 'loading',
-      message: '⏳ Creating your trip plan...',
-      isUser: false,
-      messageType: 'text',
-      timestamp: Date.now(),
-      status: 'read',
-    };
-    setMessages((prev) => [...prev, loadingMessage]);
-    scrollToBottom();
-
-    try {
-      const sessionId = guestSessionId || `user-${session?.user.id}`;
-      
-      // Prepare data for RPC call (only required fields for minimal request)
-      const leadId = await rpcCreateLeadFromGuest(sessionId, {
-        destinations: extractedData.destinations,
-        nights: extractedData.nights,
-        pax_adults: extractedData.pax_adults,
-      });
-      
-      // Remove loading message and add success message
-      setMessages((prev) => {
-        const filtered = prev.filter((msg) => msg.id !== 'loading');
-        return [
-          ...filtered,
-          {
-            id: 'success',
-            message: '🎉 Perfect! Your trip plan has been created.\n\nOur travel experts are reviewing your requirements and will send you a personalized quote shortly!\n\nYou can view your quotes in the Quotes section.',
-            isUser: false,
-            messageType: 'text' as const,
-            timestamp: Date.now(),
-            status: 'read' as const,
-          },
-        ];
-      });
-      scrollToBottom();
-
-      // Navigate after a short delay
-      setTimeout(() => {
-        router.push('/(tabs)/quotes');
-      }, 2500);
-    } catch (error) {
-      console.error('Error creating lead:', error);
-      setMessages((prev) => {
-        const filtered = prev.filter((msg) => msg.id !== 'loading');
-        return [
-          ...filtered,
-          {
-            id: 'error',
-            message: '😔 Sorry, something went wrong while creating your trip plan. Please try again.',
-            isUser: false,
-            messageType: 'text' as const,
-            timestamp: Date.now(),
-            status: 'read' as const,
-          },
-        ];
-      });
-      scrollToBottom();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUserMessage = () => {
+  const handleUserMessage = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!userInput.trim() || loading) return;
-    
+
     const messageText = userInput.trim();
     setUserInput('');
     sendMessageToBot(messageText);
   };
 
-  // Check if we have minimum required data
-  const canSubmit = 
-    extractedData.destinations && 
-    extractedData.destinations.length > 0 &&
-    extractedData.nights && 
-    extractedData.nights > 0 &&
-    extractedData.pax_adults && 
-    extractedData.pax_adults > 0;
-
-  const showSubmitButton = canSubmit && !loading;
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleUserMessage();
+    }
+  };
 
   const renderMessage = (msg: ChatMessage) => {
     // Render interactive list
@@ -500,145 +362,72 @@ export default function BotIntakeScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* WhatsApp-style Header */}
-      <ChatHeader 
+    <div className="flex flex-col h-screen bg-gray-100">
+      {/* Header */}
+      <ChatHeader
         title="Oasis Travel Bot"
         subtitle={isOnline ? "Online • Your personal trip planner" : "Connecting..."}
         isOnline={isOnline}
       />
-      
-      <KeyboardAvoidingView 
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-        {/* Chat Background Pattern */}
-        <View style={styles.chatBackground}>
-          <ScrollView 
-            ref={scrollViewRef}
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            onContentSizeChange={() => scrollToBottom()}
-            keyboardShouldPersistTaps="handled"
-          >
-            {messages.map(renderMessage)}
-            
-            {/* Typing Indicator */}
-            <TypingIndicator visible={loading} />
 
-            {/* Submit Button */}
-            {showSubmitButton && (
-              <View style={styles.submitContainer}>
-                <Button
-                  mode="contained"
-                  onPress={submitLead}
-                  style={styles.submitButton}
-                  labelStyle={styles.submitButtonLabel}
-                  disabled={loading}
-                  icon="check-circle"
-                >
-                  Get My Quote
-                </Button>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-        
-        {/* Chat Input Field */}
-        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-          <IconButton
-            icon="emoticon-outline"
-            size={24}
-            iconColor="#6B7280"
-            style={styles.inputIcon}
-          />
-          <TextInput
-            mode="flat"
+      {/* Chat Messages Area */}
+      <div
+        ref={scrollViewRef}
+        className="flex-1 overflow-y-auto py-3 space-y-1"
+        style={{ scrollBehavior: 'smooth' }}
+      >
+        {messages.map(renderMessage)}
+
+        {/* Typing Indicator */}
+        <TypingIndicator visible={loading} />
+
+        {/* Extracted Data Summary (for admin reference) */}
+        {Object.keys(extractedData).length > 0 && (
+          <div className="px-4 mt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
+              <h4 className="font-semibold text-blue-900 mb-2">Extracted Trip Data:</h4>
+              <pre className="text-blue-800 whitespace-pre-wrap">
+                {JSON.stringify(extractedData, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Chat Input Field */}
+      <div className="bg-white border-t border-gray-200 p-4">
+        <form onSubmit={handleUserMessage} className="flex items-center gap-2">
+          <button
+            type="button"
+            className="text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+            </svg>
+          </button>
+
+          <textarea
             value={userInput}
-            onChangeText={setUserInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={handleKeyPress}
             placeholder="Type a message..."
-            style={styles.textInput}
-            multiline
-            maxLength={500}
             disabled={loading}
-            onSubmitEditing={handleUserMessage}
-            blurOnSubmit={false}
-            underlineColor="transparent"
-            activeUnderlineColor="transparent"
+            rows={1}
+            className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-[15px] resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 max-h-24"
+            style={{ minHeight: '42px' }}
           />
-          <IconButton
-            icon="send"
-            iconColor={userInput.trim() ? '#0066CC' : '#9CA3AF'}
-            size={24}
-            onPress={handleUserMessage}
+
+          <button
+            type="submit"
             disabled={!userInput.trim() || loading}
-            style={styles.sendButton}
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+            className="bg-blue-100 text-blue-600 p-2.5 rounded-full hover:bg-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0066CC', // App primary color
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  chatBackground: {
-    flex: 1,
-    backgroundColor: '#F5F5F5', // App background color
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingVertical: 12,
-    paddingBottom: 80,
-  },
-  submitContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  submitButton: {
-    backgroundColor: '#00BFA5', // App tertiary color
-    borderRadius: 24,
-    paddingVertical: 4,
-  },
-  submitButtonLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  inputIcon: {
-    margin: 0,
-  },
-  textInput: {
-    flex: 1,
-    maxHeight: 100,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    marginHorizontal: 4,
-    fontSize: 15,
-  },
-  sendButton: {
-    margin: 0,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 20,
-  },
-});
